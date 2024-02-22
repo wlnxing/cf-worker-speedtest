@@ -15,7 +15,7 @@ export default async function (request: Request) {
 
 	res.headers.set('access-control-allow-origin', '*');
 	res.headers.set('timing-allow-origin', '*');
-	// res.headers.set('cache-control', 'no-store');
+	res.headers.set('cache-control', 'max-age=604800');
 	res.headers.set('content-type', 'application/octet-stream');
 
 	if (request.cf && request.cf.colo) {
