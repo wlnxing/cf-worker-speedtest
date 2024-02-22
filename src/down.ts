@@ -1,13 +1,15 @@
-const DEFAULT_NUM_BYTES = 0;
-const MAX_BYTES = 1e8;
+const MAX_MB = 1e8;
+const DEFAULT_NUM_MB = 100;
 
 export default async function (request: Request) {
 	const reqTime = new Date();
 
 	const { searchParams: qs } = new URL(request.url);
 
-	const value = qs.get('bytes');
-	const numBytes = value != null ? Math.min(MAX_BYTES, Math.abs(+value)) : DEFAULT_NUM_BYTES;
+	const value = qs.get('size'); // in MB
+
+	const numBytes = (value == null ? DEFAULT_NUM_MB : Math.min(MAX_MB, Math.abs(+value))) * 1e6;
+	// const numBytes = value != null ? Math.min(MAX_BYTES, Math.abs(+value)) : DEFAULT_NUM_BYTES;
 
 	const res = new Response('0'.repeat(Math.max(0, numBytes)));
 
