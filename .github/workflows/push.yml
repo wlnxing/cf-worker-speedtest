@@ -11,7 +11,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: inject info
         run: |
-          echo route = "${{ secrets.CLOUDFLARE_ROUTER }}" >> wrangler.toml
+          cat << EOF >> wrangler.toml
+          routes = [
+            ${{ secrets.CLOUDFLARE_ROUTER }}
+          ]
+          EOF
 
       - name: Build & Deploy Worker
         uses: cloudflare/wrangler-action@v3
