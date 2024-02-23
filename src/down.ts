@@ -1,29 +1,49 @@
-const MAX_MB = 1e8;
-const DEFAULT_NUM_MB = 100;
+import { sleep } from './utils/sleep';
 
-export default async function (request: Request) {
-	const reqTime = new Date();
+const MAX_MB = 1024;
+const DEFAULT_NUM_MB = 10;
 
+export default async function (request: Request, env: any, ctx: ExecutionContext) {
 	const { searchParams: qs } = new URL(request.url);
 
 	const value = qs.get('size'); // in MB
 
 	const numBytes = (value == null ? DEFAULT_NUM_MB : Math.min(MAX_MB, Math.abs(+value))) * 1e6;
-	// const numBytes = value != null ? Math.min(MAX_BYTES, Math.abs(+value)) : DEFAULT_NUM_BYTES;
 
-	const res = new Response('0'.repeat(Math.max(0, numBytes)));
+	const today = new Date();
+	today.setHours(0, 0, 0, 0);
 
-	res.headers.set('access-control-allow-origin', '*');
-	res.headers.set('timing-allow-origin', '*');
-	res.headers.set('cache-control', 'max-age=604800');
-	res.headers.set('content-type', 'application/octet-stream');
+	const resInit: ResponseInit = {
+		headers: {
+			'access-control-allow-origin': '*',
+			'timing-allow-origin': '*',
+			'cache-control': 'public, max-age=172800',
+			'content-type': 'application/octet-stream',
+			'content-length': String(numBytes),
+			'etag': value != null ? `W/"${numBytes}"` : 'W/"10MB"',
+			'last-modified': today.toUTCString(),
+			// 'cf-meta-colo': request.cf?.colo,
+			// 'access-control-expose-headers': 'cf-meta-colo, cf-meta-request-time',
+			// 'cf-meta-request-time': String(+reqTime),
+		},
+	};
 
-	if (request.cf && request.cf.colo) {
-		res.headers.set('cf-meta-colo', request.cf.colo);
-	}
+	const chunkSize = 1024 * 1024 * 5; // Chunk size in bytes
+	let bytesRemaining = numBytes;
+	const chunk = new Uint8Array(Math.min(chunkSize, bytesRemaining));
 
-	res.headers.set('access-control-expose-headers', 'cf-meta-colo, cf-meta-request-time');
-	res.headers.set('cf-meta-request-time', String(+reqTime));
+	const stream = new ReadableStream({
+		pull(controller) {
+			if (bytesRemaining > 0) {
+				controller.enqueue(chunk);
+				bytesRemaining -= chunk.length;
+			} else {
+				controller.close();
+			}
+		},
+	});
+
+	const res = new Response(stream, resInit);
 
 	return res;
 }
