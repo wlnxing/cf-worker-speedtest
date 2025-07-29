@@ -8,13 +8,14 @@ export default async function (request: Request, env: any, ctx: ExecutionContext
 
 	const value = qs.get('size'); // in MB
 
-	let serverDelay: number | string = qs.get('sd') || 0;
+	let serverDelayQuery = qs.get('sd') || 0;
+	let serverDelay = Number(serverDelayQuery) || 0;
 	serverDelay = Number(serverDelay);
 	if (isNaN(serverDelay)) {
 		serverDelay = 0;
 	}
-	let upstreamDelay: number | string = qs.get('ud') || 0;
-	upstreamDelay = Number(upstreamDelay);
+	const upstreamDelayQuery = qs.get('ud');
+	let upstreamDelay = Number(upstreamDelayQuery) || 0;
 	if (isNaN(upstreamDelay)) {
 		upstreamDelay = 0;
 	}
@@ -44,43 +45,49 @@ export default async function (request: Request, env: any, ctx: ExecutionContext
 	let bytesRemaining = numBytes;
 	const chunk = new Uint8Array(Math.min(chunkSize, bytesRemaining));
 
-	let pushCount = 0;
+	let stream: ReadableStream<Uint8Array> | Uint8Array;
 
-	const stream = new ReadableStream({
-		async start(controller) {
-			while (bytesRemaining > 0) {
-				if (pushCount == 0) {
-					console.log(`start push, waiting ${upstreamDelay - serverDelay}ms`, bytesRemaining);
-					await sleep(upstreamDelay);
+	if (upstreamDelay > 0) {
+		let pushCount = 0;
+		stream = new ReadableStream({
+			async start(controller) {
+				while (bytesRemaining > 0) {
+					if (pushCount == 0) {
+						console.log(`start push, waiting ${upstreamDelay - serverDelay}ms`, bytesRemaining);
+						await sleep(upstreamDelay);
+					}
+					pushCount++;
+
+					if (controller.desiredSize === null) {
+						console.log('desiredSize is null');
+						// await sleep(1000);
+						continue;
+					}
+
+					if (controller.desiredSize <= 0) {
+						console.log('desiredSize is backpressure', controller.desiredSize, pushCount);
+						await sleep(400);
+						continue;
+					}
+
+					// 如果是最后一次，chunkSize 可能会大于 bytesRemaining
+					if (chunk.length > bytesRemaining) {
+						console.log('last chunk', bytesRemaining);
+						controller.enqueue(new Uint8Array(bytesRemaining));
+						controller.close();
+						return;
+					}
+					// await sleep(1000);	// 模拟上游api网络延迟
+
+					controller.enqueue(chunk);
+					bytesRemaining -= chunk.length;
 				}
-				pushCount++;
-
-				if (controller.desiredSize === null) {
-					console.log('desiredSize is null');
-					// await sleep(1000);
-					continue;
-				}
-
-				if (controller.desiredSize <= 0) {
-					console.log('desiredSize is backpressure', controller.desiredSize, pushCount);
-					await sleep(400);
-					continue;
-				}
-
-				// 如果是最后一次，chunkSize 可能会大于 bytesRemaining
-				if (chunk.length > bytesRemaining) {
-					console.log('last chunk', bytesRemaining);
-					controller.enqueue(new Uint8Array(bytesRemaining));
-					controller.close();
-				}
-				// await sleep(1000);	// 模拟上游api网络延迟
-
-				controller.enqueue(chunk);
-				bytesRemaining -= chunk.length;
-			}
-			controller.close();
-		},
-	});
+				controller.close();
+			},
+		});
+	} else {
+		stream = new Uint8Array(numBytes);
+	}
 
 	const res = new Response(stream, resInit);
 
